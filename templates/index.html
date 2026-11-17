@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rain Detector Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              game: ["Rajdhani", "Segoe UI", "system-ui", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+        color: #e8f6ff;
+        background: #021021;
+        overflow-x: hidden;
+        --acc: 56, 214, 255;
+        --acc2: 79, 140, 255;
+        --tint: 200, 240, 255;
+        --edge: 140, 225, 255;
+      }
+      /* DRY = dark green theme */
+      body.theme-dry {
+        --acc: 46, 230, 166;
+        --acc2: 30, 170, 120;
+        --tint: 205, 255, 232;
+        --edge: 140, 255, 205;
+      }
+
+      .bg-layer {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        transition: opacity 1.2s ease;
+      }
+      #bgRain {
+        background:
+          radial-gradient(
+            1100px 700px at 15% -10%,
+            #09304f 0%,
+            transparent 60%
+          ),
+          radial-gradient(900px 600px at 100% 5%, #07264a 0%, transparent 55%),
+          linear-gradient(180deg, #031729, #010b17 70%);
+      }
+      #bgDry {
+        opacity: 0;
+        background:
+          radial-gradient(
+            1100px 700px at 15% -10%,
+            #0b3d2e 0%,
+            transparent 60%
+          ),
+          radial-gradient(900px 600px at 100% 5%, #0a3326 0%, transparent 55%),
+          linear-gradient(180deg, #04211a, #021510 70%);
+      }
+      body.theme-dry #bgDry {
+        opacity: 1;
+      }
+      body.theme-dry #bgRain {
+        opacity: 0;
+      }
+      [class*="text-cyan-100"] {
+        color: rgba(var(--tint), 0.65) !important;
+      }
+      [class*="text-cyan-200"] {
+        color: rgb(var(--acc)) !important;
+      }
+
+      /* ---------- glass panels ---------- */
+      .glass {
+        position: relative;
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid rgba(var(--edge), 0.22);
+        background: linear-gradient(
+          145deg,
+          rgba(255, 255, 255, 0.1),
+          rgba(255, 255, 255, 0.03)
+        );
+        backdrop-filter: blur(14px) saturate(140%);
+        -webkit-backdrop-filter: blur(14px) saturate(140%);
+        box-shadow:
+          0 10px 40px rgba(0, 10, 30, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.25),
+          inset 0 0 40px rgba(var(--acc), 0.06);
+        transition:
+          transform 0.25s,
+          border-color 0.25s,
+          box-shadow 0.25s;
+      }
+      .glass:hover {
+        transform: translateY(-3px);
+        border-color: rgba(var(--edge), 0.5);
+      }
+      .glass::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(
+          115deg,
+          transparent 40%,
+          rgba(255, 255, 255, 0.12) 50%,
+          transparent 60%
+        );
+        transform: translateX(-120%);
+        transition: transform 0.9s;
+      }
+      .glass:hover::before {
+        transform: translateX(120%);
+      }
+      .glass[data-state="rain"] {
+        border-color: rgba(79, 140, 255, 0.65);
+        box-shadow:
+          0 10px 40px rgba(0, 10, 30, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.25),
+          0 0 45px rgba(79, 140, 255, 0.35);
+      }
+      .glass[data-state="dry"] {
+        border-color: rgba(46, 230, 166, 0.5);
+        box-shadow:
+          0 10px 40px rgba(0, 10, 30, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.25),
+          0 0 40px rgba(46, 230, 166, 0.22);
+      }
+      [data-state="rain"] .st {
+        color: #8ab8ff;
+        text-shadow: 0 0 22px rgba(79, 140, 255, 0.85);
+      }
+      [data-state="dry"] .st {
+        color: #7ff3c9;
+        text-shadow: 0 0 22px rgba(46, 230, 166, 0.7);
+      }
+      [data-state="unknown"] .st {
+        color: #9fb3c8;
+      }
+
+      .label {
+        font-size: 0.78rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(var(--edge), 0.75);
+        font-weight: 600;
+      }
+      .title {
+        background: linear-gradient(
+          90deg,
+          #fff,
+          rgb(var(--edge)) 60%,
+          rgb(var(--acc))
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      /* ---------- live dot, badges, rows ---------- */
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #2ee6a6;
+        animation: pulse 1.8s infinite;
+      }
+      .dot.off {
+        background: #ff5d6c;
+        animation: none;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(46, 230, 166, 0.7);
+        }
+        100% {
+          box-shadow: 0 0 0 10px rgba(46, 230, 166, 0);
+        }
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.12rem 0.85rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .badge.rain {
+        background: rgba(79, 140, 255, 0.2);
+        color: #9cc2ff;
+        border: 1px solid rgba(79, 140, 255, 0.6);
+        box-shadow: 0 0 14px rgba(79, 140, 255, 0.35);
+      }
+      .badge.dry {
+        background: rgba(46, 230, 166, 0.15);
+        color: #7ff3c9;
+        border: 1px solid rgba(46, 230, 166, 0.55);
+        box-shadow: 0 0 14px rgba(46, 230, 166, 0.25);
+      }
+
+      tbody tr {
+        transition: background 0.2s;
+      }
+      tbody tr:hover {
+        background: rgba(var(--acc), 0.08);
+      }
+      tbody tr.new {
+        animation: flash 1.8s ease-out;
+      }
+      @keyframes flash {
+        from {
+          background: rgba(var(--acc), 0.38);
+        }
+        to {
+          background: transparent;
+        }
+      }
+
+      /* ---------- animated waves ---------- */
+      .waves {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 150px;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .wave {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 200%;
+        height: 100%;
+        transition: fill 1.2s;
+      }
+      .w1 {
+        fill: rgba(var(--acc), 0.13);
+        animation: drift 18s linear infinite;
+      }
+      .w2 {
+        fill: rgba(var(--acc2), 0.16);
+        animation: drift 28s linear infinite reverse;
+        height: 80%;
+      }
+      @keyframes drift {
+        to {
+          transform: translateX(-50%);
+        }
+      }
+
+      /* ---------- rain streaks (only while raining) ---------- */
+      #rainFx {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        opacity: 0;
+        transition: opacity 1s;
+      }
+      body.is-raining #rainFx {
+        opacity: 1;
+      }
+      #rainFx i {
+        position: absolute;
+        top: -80px;
+        width: 1.5px;
+        height: 60px;
+        background: linear-gradient(transparent, rgba(160, 220, 255, 0.55));
+        animation: fall linear infinite;
+      }
+      @keyframes fall {
+        to {
+          transform: translateY(115vh);
+        }
+      }
+
+      /* ---------- water cursor ---------- */
+      #ripples {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9998;
+      }
+      #cursor {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 26px;
+        height: 26px;
+        margin: -13px 0 0 -13px;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 9999;
+        opacity: 0;
+        transition: opacity 0.25s;
+        background: radial-gradient(
+          circle at 30% 28%,
+          rgba(255, 255, 255, 0.95) 0 10%,
+          rgba(130, 230, 255, 0.55) 38%,
+          rgba(30, 140, 220, 0.22) 72%
+        );
+        border: 1.5px solid rgba(190, 242, 255, 0.85);
+        box-shadow:
+          0 0 18px rgba(var(--acc), 0.65),
+          inset 0 0 8px rgba(255, 255, 255, 0.4);
+        mix-blend-mode: screen;
+        display: none;
+      }
+      body.use-water-cursor,
+      body.use-water-cursor * {
+        cursor: none !important;
+      }
+      body.use-water-cursor #cursor {
+        display: block;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="font-game min-h-screen">
+    <div id="bgRain" class="bg-layer"></div>
+    <div id="bgDry" class="bg-layer"></div>
+    <canvas id="ripples"></canvas>
+    <div id="cursor"></div>
+    <div id="rainFx"></div>
+
+    <div class="waves" aria-hidden="true">
+      <svg class="wave w1" viewBox="0 0 2880 120" preserveAspectRatio="none">
+        <path
+          d="M0,60 C240,110 480,10 720,60 C960,110 1200,10 1440,60 C1680,110 1920,10 2160,60 C2400,110 2640,10 2880,60 L2880,120 L0,120 Z"
+        />
+      </svg>
+      <svg class="wave w2" viewBox="0 0 2880 120" preserveAspectRatio="none">
+        <path
+          d="M0,70 C300,20 540,110 720,70 C1020,20 1260,110 1440,70 C1740,20 1980,110 2160,70 C2460,20 2700,110 2880,70 L2880,120 L0,120 Z"
+        />
+      </svg>
+    </div>
+
+    <main class="relative z-10 mx-auto max-w-5xl px-4 pb-44 pt-10">
+      <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p class="label mb-1">Smart Clothesline</p>
+          <h1 class="title text-4xl font-bold leading-tight sm:text-5xl">
+            Rain Detector Dashboard
+          </h1>
+          <p class="mt-1 text-sm text-cyan-100/60">
+            Updates automatically every 3 seconds.
+          </p>
+        </div>
+        <div
+          class="glass flex items-center gap-2 !rounded-full px-4 py-2 text-sm font-semibold tracking-wider"
+        >
+          <span id="liveDot" class="dot"></span>
+          <span id="liveText">CONNECTING</span>
+          <span id="updated" class="font-medium text-cyan-100/50"></span>
+        </div>
+      </header>
+
+      <section class="mb-6 grid gap-5 md:grid-cols-3">
+        <div id="statusCard" class="glass p-5" data-state="unknown">
+          <p class="label">Current status</p>
+          <div class="mt-3 flex items-center gap-4">
+            <div id="statusIcon" class="st h-14 w-14 shrink-0"></div>
+            <div>
+              <p
+                id="statusText"
+                class="st text-3xl font-bold leading-none tracking-wide"
+              >
+                LOADING
+              </p>
+              <p id="statusSince" class="mt-2 text-sm text-cyan-100/65"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass p-5">
+          <p class="label">Rain events today</p>
+          <p
+            id="todayCount"
+            class="mt-3 text-5xl font-bold text-cyan-200"
+            style="text-shadow: 0 0 22px rgba(var(--acc), 0.55)"
+          >
+            0
+          </p>
+        </div>
+
+        <div class="glass p-5">
+          <p class="label">Last rain detected</p>
+          <p id="lastRain" class="mt-3 text-2xl font-bold text-white">-</p>
+          <p id="lastRainAgo" class="mt-1 text-sm text-cyan-100/65"></p>
+        </div>
+      </section>
+
+      <section class="glass">
+        <div class="flex items-center justify-between px-5 pb-2 pt-4">
+          <p class="label">Event log</p>
+          <p id="eventCount" class="text-sm text-cyan-100/55"></p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead>
+              <tr class="label border-b border-cyan-200/10">
+                <th class="px-5 py-3 font-semibold">#</th>
+                <th class="px-5 py-3 font-semibold">Status</th>
+                <th class="px-5 py-3 font-semibold">Time</th>
+              </tr>
+            </thead>
+            <tbody id="eventsBody" class="text-lg"></tbody>
+          </table>
+        </div>
+        <p id="emptyMsg" class="hidden px-5 py-6 text-cyan-100/60">
+          No events yet.
+        </p>
+      </section>
+
+      <p id="errorMsg" class="mt-4 hidden text-sm text-rose-300">
+        Cannot reach the server. Retrying...
+      </p>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const RIPPLE = { rgb: "140,230,255" };
+
+      /* ================= water cursor + ripples ================= */
+      (function () {
+        const fine = matchMedia("(pointer: fine)").matches;
+        const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const cursor = $("cursor"),
+          cv = $("ripples"),
+          ctx = cv.getContext("2d");
+        let W, H, dpr;
+        function resize() {
+          dpr = Math.min(window.devicePixelRatio || 1, 2);
+          W = innerWidth;
+          H = innerHeight;
+          cv.width = W * dpr;
+          cv.height = H * dpr;
+          cv.style.width = W + "px";
+          cv.style.height = H + "px";
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        resize();
+        addEventListener("resize", resize);
+
+        const ripples = [];
+        function ripple(x, y, max, speed, alpha) {
+          ripples.push({ x, y, r: 2, max, speed, a: alpha });
+        }
+
+        let mx = -100,
+          my = -100,
+          cx = -100,
+          cy = -100,
+          lx = 0,
+          ly = 0,
+          scale = 1,
+          tScale = 1,
+          seen = false;
+        // if (fine && !reduce) document.body.classList.add('use-water-cursor');
+
+        addEventListener("mousemove", (e) => {
+          mx = e.clientX;
+          my = e.clientY;
+          if (!seen) {
+            seen = true;
+            cx = mx;
+            cy = my;
+            cursor.style.opacity = 1;
+          }
+          if (reduce) return;
+          const dx = mx - lx,
+            dy = my - ly;
+          if (dx * dx + dy * dy > 1600) {
+            ripple(mx, my, 60 + Math.random() * 30, 1.6, 0.45);
+            lx = mx;
+            ly = my;
+          }
+          tScale =
+            e.target.closest && e.target.closest(".glass, tr, a, button")
+              ? 1.7
+              : 1;
+        });
+        addEventListener("pointerdown", (e) => {
+          if (reduce) return;
+          tScale = 0.7;
+          ripple(e.clientX, e.clientY, 150, 2.6, 0.7);
+          setTimeout(() => ripple(e.clientX, e.clientY, 105, 2.2, 0.5), 120);
+        });
+        addEventListener("pointerup", () => {
+          tScale = 1;
+        });
+        document.addEventListener("mouseleave", () => {
+          cursor.style.opacity = 0;
+        });
+        document.addEventListener("mouseenter", () => {
+          if (seen) cursor.style.opacity = 1;
+        });
+
+        function frame() {
+          cx += (mx - cx) * 0.22;
+          cy += (my - cy) * 0.22;
+          scale += (tScale - scale) * 0.2;
+          if (fine && !reduce)
+            cursor.style.transform =
+              "translate3d(" + cx + "px," + cy + "px,0) scale(" + scale + ")";
+          ctx.clearRect(0, 0, W, H);
+          for (let i = ripples.length - 1; i >= 0; i--) {
+            const p = ripples[i];
+            p.r += p.speed;
+            p.a *= 0.965;
+            const t = p.r / p.max;
+            if (t >= 1 || p.a < 0.01) {
+              ripples.splice(i, 1);
+              continue;
+            }
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, 6.283);
+            ctx.strokeStyle = "rgba(" + RIPPLE.rgb + "," + p.a * (1 - t) + ")";
+            ctx.lineWidth = 2 * (1 - t) + 0.5;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r * 0.62, 0, 6.283);
+            ctx.strokeStyle = "rgba(255,255,255," + p.a * (1 - t) * 0.5 + ")";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+          requestAnimationFrame(frame);
+        }
+        frame();
+
+        // raindrops hitting the "water" while it is raining
+        setInterval(() => {
+          if (document.body.classList.contains("is-raining") && !reduce) {
+            ripple(
+              Math.random() * W,
+              H * 0.35 + Math.random() * H * 0.65,
+              40 + Math.random() * 40,
+              1.2,
+              0.35,
+            );
+          }
+        }, 350);
+      })();
+
+      /* ================= falling rain streaks ================= */
+      (function () {
+        const box = $("rainFx");
+        for (let i = 0; i < 45; i++) {
+          const d = document.createElement("i");
+          d.style.left = Math.random() * 100 + "%";
+          d.style.animationDuration = 0.7 + Math.random() * 0.8 + "s";
+          d.style.animationDelay = -Math.random() * 2 + "s";
+          d.style.opacity = 0.3 + Math.random() * 0.6;
+          box.appendChild(d);
+        }
+      })();
+
+      /* ================= dashboard logic ================= */
+      const ICONS = {
+        dry: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="32" cy="32" r="10"/><path d="M32 8v7M32 49v7M8 32h7M49 32h7M15 15l5 5M44 44l5 5M49 15l-5 5M20 44l-5 5"/></svg>',
+        rain: '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 36a9 9 0 0 1 1.5-17.9A13 13 0 0 1 45 20a9.5 9.5 0 0 1 1 19H18z"/><path d="M24 46l-3 8M34 46l-3 8M44 46l-3 8"/></svg>',
+        unknown:
+          '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="32" cy="32" r="22"/><path d="M26 26a6 6 0 1 1 8 5.6c-1.4.7-2 1.6-2 3.4M32 43v1"/></svg>',
+      };
+      const TEXT = { rain: "RAINING", dry: "DRY", unknown: "NO DATA" };
+
+      let sinceDate = null,
+        lastRainDate = null,
+        seenMaxId = null;
+
+      const parseTime = (s) => new Date(s.replace(" ", "T"));
+      function dur(ms) {
+        let s = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(s / 3600);
+        s -= h * 3600;
+        const m = Math.floor(s / 60);
+        s -= m * 60;
+        return (h ? h + "h " : "") + (h || m ? m + "m " : "") + s + "s";
+      }
+
+      function renderStatus(data) {
+        const st = data.status in TEXT ? data.status : "unknown";
+        $("statusCard").dataset.state = st;
+        $("statusIcon").innerHTML = ICONS[st];
+        $("statusText").textContent = TEXT[st];
+        document.body.classList.toggle("is-raining", st === "rain");
+        document.body.classList.toggle("theme-dry", st === "dry");
+        RIPPLE.rgb = st === "dry" ? "150,255,205" : "140,230,255";
+        sinceDate = data.since ? parseTime(data.since) : null;
+        tick();
+      }
+
+      function renderEvents(events) {
+        const body = $("eventsBody");
+        body.innerHTML = "";
+        $("emptyMsg").classList.toggle("hidden", events.length > 0);
+        $("eventCount").textContent = events.length
+          ? "Showing latest " + events.length
+          : "";
+
+        const today = new Date().toLocaleDateString("en-CA");
+        let countToday = 0,
+          lastRain = null;
+        const maxId = events.length ? events[0].id : null;
+
+        for (const ev of events) {
+          if (ev.status === "rain") {
+            if (lastRain === null) lastRain = ev.created_at;
+            if (ev.created_at.startsWith(today)) countToday++;
+          }
+          const tr = document.createElement("tr");
+          tr.className = "border-b border-cyan-200/10 last:border-0";
+          if (seenMaxId !== null && ev.id > seenMaxId) tr.classList.add("new");
+
+          const tdId = document.createElement("td");
+          tdId.className = "px-5 py-3 text-cyan-100/70";
+          tdId.textContent = ev.id;
+
+          const tdStatus = document.createElement("td");
+          tdStatus.className = "px-5 py-3";
+          const badge = document.createElement("span");
+          badge.className = "badge " + ev.status;
+          badge.textContent = ev.status === "rain" ? "Rain" : "Dry";
+          tdStatus.appendChild(badge);
+
+          const tdTime = document.createElement("td");
+          tdTime.className = "px-5 py-3 font-medium";
+          tdTime.textContent = ev.created_at;
+
+          tr.append(tdId, tdStatus, tdTime);
+          body.appendChild(tr);
+        }
+        if (maxId !== null) seenMaxId = maxId;
+
+        $("todayCount").textContent = countToday;
+        $("lastRain").textContent = lastRain || "-";
+        lastRainDate = lastRain ? parseTime(lastRain) : null;
+        tick();
+      }
+
+      function tick() {
+        $("statusSince").textContent = sinceDate
+          ? "For " + dur(Date.now() - sinceDate)
+          : "";
+        $("lastRainAgo").textContent = lastRainDate
+          ? dur(Date.now() - lastRainDate) + " ago"
+          : "";
+      }
+      setInterval(tick, 1000);
+
+      function setLive(ok) {
+        $("liveDot").classList.toggle("off", !ok);
+        $("liveText").textContent = ok ? "LIVE" : "OFFLINE";
+        $("errorMsg").classList.toggle("hidden", ok);
+        if (ok) $("updated").textContent = new Date().toLocaleTimeString();
+      }
+
+      async function refresh() {
+        try {
+          const [statusRes, eventsRes] = await Promise.all([
+            fetch("/api/status"),
+            fetch("/api/events?limit=50"),
+          ]);
+          renderStatus(await statusRes.json());
+          renderEvents(await eventsRes.json());
+          setLive(true);
+        } catch (err) {
+          setLive(false);
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 3000);
+    </script>
+  </body>
+</html>
