@@ -3,13 +3,13 @@
 Servo clothesServo;
 
 const int SERVO_PIN = 9;
-const int RAIN_DO_PIN = 3;       // rain sensor DO: LOW = wet
-const int DRY_ANGLE = 110;       // clothesline out / open (dry)
-const int RAIN_ANGLE = 0;        // clothesline in / closed (rain)
+const int RAIN_DO_PIN = 3;       
+const int DRY_ANGLE = 110;       
+const int RAIN_ANGLE = 0;        
 
-const unsigned long RAIN_CONFIRM_MS = 500;   // must be wet this long before closing
-const unsigned long DRY_CONFIRM_MS = 5000;   // must be dry this long before opening
-                                             // (use 60000 or more for real use)
+const unsigned long RAIN_CONFIRM_MS = 500;   
+const unsigned long DRY_CONFIRM_MS = 5000;  
+                                             
 
 bool isRaining = false;
 bool lastWet = false;
